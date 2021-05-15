@@ -4,98 +4,129 @@
 
 import { ref, onMounted} from 'vue'
 import {Loader} from '@googlemaps/js-api-loader'
+import axios from 'axios'
 
-const GOOGLE_MAPS_API_KEY = 'AIzaSyBIwzALxUPNbatRBj3Xi1Uhp0fFzwWNBkE'
-
+const GOOGLE_MAPS_API_KEY = 'AIzaSyB41DRUbKWJHPxaFjMAwdrzWzbVKartNGg'
 
 export default {
   name: 'App',
   components: {
+  },
+  data: function() {
+    return {
+      selectedUser: '',
+      users: [],
+      geo: [],
+      points: [],
+      map: null
+    }
+    
+  },
+
+  mounted() {
+    axios.get('http://127.0.0.1:8000/api/users/')
+      .then(response => {
+        this.users = response.data
+      })
+      .catch(e => {
+        console.log(e);
+      });
+
+    const loader = new Loader({ apiKey: GOOGLE_MAPS_API_KEY});
+    loader
+      .load()
+      .then(() => { this.initMap(); })
+      .catch(e => { console.log(e) });
 
   },
-  setup() {
 
-    const locations = [
-        {id: 1, lat: 52.2360592, lng: 21.002903599999968, name_point: 'A', title: 'text on hover'},
-        {id: 2, lat: 52.2179967, lng: 21.222655600000053, name_point: 'B', title: 'text on hover'},
-        {id: 3, lat: 52.2166692, lng: 20.993677599999955, name_point: 'C', title: 'text on hover'},
-      ]
+  watch: {
+    selectedUser: function(user) {
+      this.setMarkers(user);
+    }
 
-    const mapDiv = ref(null)
-    const loader = new Loader({ apiKey: GOOGLE_MAPS_API_KEY})
-    let markers = [];
+  },
 
-    var map = ref(null);
-    var directionsService;
-    var directionsDisplay;
-
-    onMounted(async () => {
-      await loader.load()
-      map = new google.maps.Map(mapDiv.value, {
+  methods: {
+    initMap() {
+      console.log("initMap");
+      this.map = new google.maps.Map(document.getElementById('map'), {
         center: new google.maps.LatLng(0, 0),
-        zoom: 7,
+        zoom: 15,
         mapTypeId: google.maps.MapTypeId.ROADMAP
       })
-      directionsService = new google.maps.DirectionsService();
-      
+    },
 
-      setMarker(map, locations);
-      showMarkers()
-      if(markers !== []) {
-        setWaypoints(map);
-      }
-      console.log(map);
-      // map.value.setCenter(50,50);
-      // deleteMarkers();
+    setMarkers() {
+      axios.get('http://127.0.0.1:8000/api/geo/')
+      .then((response) => {
+        this.geo = response.data;
+        this.map.setCenter(new google.maps.LatLng(this.geo[0].lat, this.geo[0].lng));
+        let points = this.setMarkerOnMap();
+        this.showMarkers(points);
+        
+        // this.setWaypoints(points);
+      })
+      .catch(e => {
+        console.log(e);
+      });      
+    },
 
-    })
-
-    function setMarker(map, locations) {
-      for(let i = 0; i < locations.length; i++) {
+    setMarkerOnMap() {
+      console.log("setMarkerOnMap");
+      let points = [];
+      let geoPoints = this.geo;
+      for(let i = 0; i < geoPoints.length; i++) {
         let point = new google.maps.Marker({
-          position: locations[i],
-          map: map
+          position: { lat: geoPoints[i].lat, lng: geoPoints[i].lng },
+          map: this.map
         });
-        markers.push(point);
-      }
-      
-    }
+        points.push(point);
+        console.log(point);
+      } 
+      return points;
+    },
 
-    function setMapOnAll(map) {
-      for (let i = 0; i < markers.length; i++) {
-        markers[i].setMap(map);
+    setMapOnAll(map, points) {
+      for (let i = 0; i < points.length; i++) {
+        console.log(points[i]);
+        points[i].setMap(map);
       }
-    }
+    },
 
     // Shows any markers currently in the array.
-    function showMarkers() {
-      setMapOnAll(map);
-    }
+    showMarkers(points) {
+      this.setMapOnAll(this.map, points);
+    },
 
     // Removes the markers from the map, but keeps them in the array.
-    function clearMarkers() {
-      setMapOnAll(null);
-    }
+    clearMarkers() {
+      this.setMapOnAll(null, points);
+    },
 
     // Deletes all markers in the array by removing references to them.
-    function deleteMarkers() {
-      clearMarkers();
-      markers = [];
+    deleteMarkers() {
+      this.clearMarkers();
+      this.points = []
       directionsDisplay = null;
-    }
+    },
 
-    function setWaypoints(map) {
-      directionsDisplay = new google.maps.DirectionsRenderer({suppressMarkers:true});
-      directionsDisplay.setMap(map);
-      var start = markers[0].getPosition();
-      var end = markers[markers.length - 1].getPosition();
-      var waypts = [];
-      for (var i = 1; i < markers.length - 1; i++) {
+    setWaypoints(points) {
+      var directionsService = new google.maps.DirectionsService();
+      var directionsDisplay = new google.maps.DirectionsRenderer({suppressMarkers:true});
+
+      directionsDisplay.setMap(this.map);
+      let start = points[0].getPosition();
+      let end = points[points.length - 1].getPosition();
+
+      let waypts = [];
+      for (let i = 1; i < points.length - 1; i++) {
           waypts.push({
-              location: markers[i].getPosition(),
+              location: points[i].getPosition(),
               stopover: true
           });
       }
+
       var request = {
         origin: start,
         destination: end,
@@ -103,45 +134,36 @@ export default {
         optimizeWaypoints: true,
         travelMode: google.maps.TravelMode.DRIVING
       };
-
+      
       directionsService.route(request, function (response, status) {
           if (status == google.maps.DirectionsStatus.OK) {
-            console.log(response)
               if(directionsDisplay)
               {
                 directionsDisplay.setDirections(response);
               }
-              
-              // var route = response.routes[0];
-              // var summaryPanel = document.getElementById('directions_panel');
-              // summaryPanel.innerHTML = '';
-              // // For each route, display summary information.
-              // for (var i = 0; i < route.legs.length; i++) {
-              //     var routeSegment = i + 1;
-              //     summaryPanel.innerHTML += '<b>Route Segment: ' + routeSegment + '</b><br>';
-              //     summaryPanel.innerHTML += route.legs[i].start_address + ' to ';
-              //     summaryPanel.innerHTML += route.legs[i].end_address + '<br>';
-              //     summaryPanel.innerHTML += route.legs[i].distance.text + '<br><br>';
-              // }
+              waypts_response = response
           }
         });
     }
-    
-    return {mapDiv}
 
-  },
+  }
 
 }
 </script>
 
 <template>
-  
-  <div ref="mapDiv" style="width: 100%; height: 80vh"></div>
-  <div class="d-flex text-center" style="height: 20vh">
-    <!-- <div class="m-auto">
+  <div>
+    <div id="map" style="width: 100%; height: 80vh"></div>
+    <div class="d-flex text-center" style="height: 20vh">
+      <select name="userSelect" v-model="selectedUser">
+        <option v-for="user in users" v-bind:key="user.id" v-bind:value="user.imei" v-on:change="setMarkers"> {{ user.imei }}</option>
+      </select>
+      <!-- <div class="m-auto">
 
-    </div> -->
+      </div> -->
+    </div>
   </div>
+  
 </template>
 
 

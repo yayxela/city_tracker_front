@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "^1.11.4",
+    "axios": "^0.21.1",
     "bootstrap": "^5.0.0",
     "core-js": "^3.6.5",
     "sass-loader": "^11.0.1",
